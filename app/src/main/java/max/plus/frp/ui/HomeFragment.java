@@ -693,9 +693,10 @@ public class HomeFragment extends Fragment {
                     : (lower.endsWith(".yaml") || lower.endsWith(".yml")) ? "yaml"
                     : lower.endsWith(".ini") ? "ini" : "toml";
 
+            final String displayName = fileName;
             final Config config = new Config(content);
             config.setUid(UUID.randomUUID().toString());
-            config.setName(fileName);
+            config.setName(displayName);
             config.setFormat(format);
             FrpcDatabase.getInstance(getContext())
                     .configDao()
@@ -710,7 +711,7 @@ public class HomeFragment extends Fragment {
                         @Override
                         public void onComplete() {
                             LiveEventBus.get(EVENT_UPDATE_CONFIG, Config.class).post(config);
-                            Toast.makeText(getContext(), "已导入: " + fileName, Toast.LENGTH_SHORT).show();
+                            Toast.makeText(getContext(), "已导入: " + displayName, Toast.LENGTH_SHORT).show();
                         }
 
                         @Override
