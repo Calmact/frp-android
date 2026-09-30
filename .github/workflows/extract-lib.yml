@@ -1,0 +1,70 @@
+name: Extract 0.61.0 frp lib
+
+on:
+  workflow_dispatch:
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 11
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 11
+
+      - name: Download 0.61.0 source apk
+        run: |
+          wget -q https://github.com/Calmact/frp-android/releases/download/v061-src/frpc_android-0.61.0-universal.apk
+          unzip -o -q frpc_android-0.61.0-universal.apk -d apk061 "classes*.dex" "lib/*"
+
+      - name: Install python tools
+        run: |
+          python3 -m pip install --quiet androguard==3.3.5
+          python3 -m pip install --quiet axmlparserpy || true
+
+      - name: Dump bridge API surface
+        run: |
+          python3 tools/dump_api.py apk061/classes.dex apk061/classes2.dex | tee frpclib-api.txt
+
+      - name: dex2jar (classes.dex + classes2.dex)
+        run: |
+          wget -q https://github.com/pxb1988/dex2jar/releases/download/v2.4/dex-tools-v2.4.zip
+          unzip -q dex-tools-v2.4.zip -d d2j
+          chmod +x d2j/dex-tools-v2.4/*.sh d2j/*.sh 2>/dev/null || true
+          D2J=$(find d2j -name "d2j-dex2jar.sh" | head -1)
+          echo "using $D2J"
+          sh "$D2J" -f --output-Dir d2jout apk061/classes.dex
+          sh "$D2J" -f --output-Dir d2jout apk061/classes2.dex
+          ls -la d2jout/
+
+      - name: Build frp061.aar (bridge jar + gomobile so)
+        run: |
+          mkdir -p aar/jni/arm64-v8a aar/jni/armeabi-v7a aar/jni/x86 aar/jni/x86_64
+          for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+            cp apk061/lib/$abi/libgojni.so aar/jni/$abi/
+          done
+          mkdir -p jarwork
+          for j in d2jout/*.jar; do
+            unzip -qo "$j" -d jarwork "go/*" "frpclib/*" "META-INF/*" || true
+          done
+          find jarwork -name "*.class" | head -30
+          jar cf aar-classes.jar -C jarwork go frpclib
+          printf '<?xml version="1.0" encoding="UTF-8"?><manifest package="go.frpclib"/>' > aar/AndroidManifest.xml
+          printf '' > aar/R.txt
+          printf '-keep class go.** { *; }\n-keep class frpclib.** { *; }' > aar/proguard.txt
+          cp aar-classes.jar aar/classes.jar
+          (cd aar && zip -qr ../frp061.aar .)
+          ls -la frp061.aar
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frp061-lib
+          path: |
+            frp061.aar
+            frpclib-api.txt
+          if-no-files-found: error
