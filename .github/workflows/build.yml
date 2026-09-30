@@ -12,11 +12,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 8 (AGP 3.5.x requires Java 8)
+      - name: Set up JDK 11 (JDK 8 javac chokes on MODULE attribute of modern jars)
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 8
+          java-version: 11
 
       - name: Build debug APK
         run: |
