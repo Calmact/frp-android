@@ -18,6 +18,13 @@ jobs:
           distribution: temurin
           java-version: 11
 
+      - name: Preprocess bundled AARs (class -> dex inside classes.jar)
+        run: |
+          D8=$(find /usr/local/lib/android/sdk/build-tools -name d8 | sort -V | tail -1)
+          AJAR=$(ls /usr/local/lib/android/sdk/platforms/android-3*/android.jar | sort -V | tail -1)
+          echo "d8=$D8 android.jar=$AJAR"
+          python3 tools/preprocess_aar.py "$D8" "$AJAR" app/src/main/assets/lib_versions/*/frp.aar
+
       - name: Build debug APK
         run: |
           chmod +x gradlew
