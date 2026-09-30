@@ -237,6 +237,13 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             case R.id.action_imported_files:
                 startActivity(new Intent(this, ImportedFilesActivity.class));
                 return true;
+            case R.id.action_add_file:
+                if (serverType.equals("frps")) {
+                    LiveEventBus.get(HomeFragmentFrps.EVENT_ADD_FROM_FILE).post(true);
+                } else {
+                    LiveEventBus.get(HomeFragment.EVENT_ADD_FROM_FILE).post(true);
+                }
+                return true;
             case R.id.action_clear_all:
                 new com.afollestad.materialdialogs.MaterialDialog.Builder(this)
                         .title(R.string.action_clear_all)

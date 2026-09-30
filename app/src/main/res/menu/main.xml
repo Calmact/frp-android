@@ -40,7 +40,7 @@
                 android:id="@+id/action_add_file"
                 android:orderInCategory="200"
                 android:title="@string/action_add_file"
-                android:visible="false"
+                android:visible="true"
                 app:showAsAction="never" />
             <item
                 android:id="@+id/action_add_url"

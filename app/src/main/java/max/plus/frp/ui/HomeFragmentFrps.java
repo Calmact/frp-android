@@ -43,6 +43,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
@@ -63,9 +64,11 @@ public class HomeFragmentFrps extends Fragment {
     public static final String EVENT_EXPORT_CONFIGS = "EVENT_EXPORT_CONFIGS_FRPS";
     public static final String EVENT_IMPORT_CONFIGS = "EVENT_IMPORT_CONFIGS_FRPS";
     public static final String EVENT_CLEAR_ALL = "EVENT_CLEAR_ALL_FRPS";
-    
+    public static final String EVENT_ADD_FROM_FILE = "EVENT_ADD_FROM_FILE_FRPS";
+
     private static final int REQUEST_CODE_IMPORT_FILE = 1002;
     private static final int REQUEST_CODE_EXPORT_FILE = 1003;
+    private static final int REQUEST_CODE_ADD_FILE = 1004;
     private static final String PREFS_EXPORT_DIR = "export_dir_prefs";
     private static final String KEY_EXPORT_DIR = "export_dir_frps";
     private String exportJsonData; // 临时保存要导出的 JSON 数据
@@ -277,6 +280,7 @@ public class HomeFragmentFrps extends Fragment {
         LiveEventBus.get(EVENT_EXPORT_CONFIGS, Boolean.class).observe(this, ignore -> exportConfigs());
         LiveEventBus.get(EVENT_IMPORT_CONFIGS, Boolean.class).observe(this, ignore -> importConfigs());
         LiveEventBus.get(EVENT_CLEAR_ALL, Boolean.class).observe(this, ignore -> clearAll());
+        LiveEventBus.get(EVENT_ADD_FROM_FILE, Boolean.class).observe(this, ignore -> addConfigFromFile());
 
     }
 
@@ -704,7 +708,92 @@ public class HomeFragmentFrps extends Fragment {
                 importConfigsFromUri(uri);
             } else if (requestCode == REQUEST_CODE_EXPORT_FILE) {
                 exportConfigsToUri(uri);
+            } else if (requestCode == REQUEST_CODE_ADD_FILE) {
+                addConfigFromUri(uri);
             }
+        }
+    }
+
+    /**
+     * 从本地文件选择器添加单个配置文件（toml/yaml/ini/json 原文入库）
+     */
+    private void addConfigFromFile() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.setType("*/*");
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        try {
+            startActivityForResult(Intent.createChooser(intent, "选择配置文件"), REQUEST_CODE_ADD_FILE);
+        } catch (android.content.ActivityNotFoundException ex) {
+            Intent fallback = new Intent(Intent.ACTION_GET_CONTENT);
+            fallback.setType("*/*");
+            fallback.addCategory(Intent.CATEGORY_OPENABLE);
+            try {
+                startActivityForResult(Intent.createChooser(fallback, "选择配置文件"), REQUEST_CODE_ADD_FILE);
+            } catch (android.content.ActivityNotFoundException ex2) {
+                Toast.makeText(getContext(), "未找到文件选择器", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    private void addConfigFromUri(Uri uri) {
+        try {
+            StringBuilder sb = new StringBuilder();
+            BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(getContext().getContentResolver().openInputStream(uri), StandardCharsets.UTF_8));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                sb.append(line).append("\n");
+            }
+            reader.close();
+            String content = sb.toString();
+            if (TextUtils.isEmpty(content.trim())) {
+                Toast.makeText(getContext(), "文件内容为空", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            // 提取文件名并推断格式（frp 现行默认 toml 兜底）
+            String fileName = uri.getLastPathSegment();
+            if (fileName != null && fileName.contains(":")) {
+                fileName = fileName.substring(fileName.lastIndexOf(':') + 1);
+            }
+            if (fileName != null && fileName.contains("/")) {
+                fileName = fileName.substring(fileName.lastIndexOf('/') + 1);
+            }
+            if (TextUtils.isEmpty(fileName)) {
+                fileName = "imported";
+            }
+            String lower = fileName.toLowerCase(Locale.ROOT);
+            String format = lower.endsWith(".json") ? "json"
+                    : (lower.endsWith(".yaml") || lower.endsWith(".yml")) ? "yaml"
+                    : lower.endsWith(".ini") ? "ini" : "toml";
+
+            final Config config = new Config(content);
+            config.setUid(UUID.randomUUID().toString());
+            config.setName(fileName);
+            config.setFormat(format);
+            FrpsDatabase.getInstance(getContext())
+                    .configDao()
+                    .insert(config)
+                    .subscribeOn(Schedulers.io())
+                    .observeOn(AndroidSchedulers.mainThread())
+                    .subscribe(new CompletableObserver() {
+                        @Override
+                        public void onSubscribe(@NonNull Disposable d) {
+                        }
+
+                        @Override
+                        public void onComplete() {
+                            LiveEventBus.get(EVENT_UPDATE_CONFIG, Config.class).post(config);
+                            Toast.makeText(getContext(), "已导入: " + fileName, Toast.LENGTH_SHORT).show();
+                        }
+
+                        @Override
+                        public void onError(@NonNull Throwable e) {
+                            Toast.makeText(getContext(), "导入失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                        }
+                    });
+        } catch (Exception e) {
+            Toast.makeText(getContext(), "导入失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
     
